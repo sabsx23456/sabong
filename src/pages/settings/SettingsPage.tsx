@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
-import { User, Lock, Save, Shield, Facebook, Phone, KeyRound, Loader2 } from 'lucide-react';
+import { User, Lock, Save, Shield, Facebook, Phone, KeyRound, Loader2, Volume2, Settings } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
-
-
 export const SettingsPage = () => {
     const { profile, refreshProfile } = useAuthStore();
     const { showToast } = useToast();
@@ -14,7 +12,7 @@ export const SettingsPage = () => {
     const [phoneNumber, setPhoneNumber] = useState('');
     const [isSavingInfo, setIsSavingInfo] = useState(false);
 
-    // Security State
+    // Password State
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [isChangingPassword, setIsChangingPassword] = useState(false);
@@ -24,7 +22,10 @@ export const SettingsPage = () => {
     const [confirmPin, setConfirmPin] = useState('');
     const [isSettingPin, setIsSettingPin] = useState(false);
 
-    // Initialize fields
+    // System Settings State
+    const [audioEnabled, setAudioEnabled] = useState(false);
+    const [isSavingSystem, setIsSavingSystem] = useState(false);
+
     useEffect(() => {
         if (profile) {
             setFacebookUrl(profile.facebook_url || '');
@@ -32,10 +33,24 @@ export const SettingsPage = () => {
         }
     }, [profile]);
 
+    useEffect(() => {
+        const fetchSystemSettings = async () => {
+            if (profile?.role !== 'admin') return;
+            const { data } = await supabase
+                .from('system_settings')
+                .select('value')
+                .eq('key', 'audio_chat_enabled')
+                .single();
+            if (data?.value === 'true') {
+                setAudioEnabled(true);
+            }
+        };
+        fetchSystemSettings();
+    }, [profile]);
+
     const handleSaveInfo = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!profile) return;
-
         setIsSavingInfo(true);
         try {
             const { error } = await supabase
@@ -114,6 +129,28 @@ export const SettingsPage = () => {
             showToast(error.message || 'Failed to set PIN.', 'error');
         } finally {
             setIsSettingPin(false);
+        }
+    };
+
+    const handleSaveSystemSettings = async () => {
+        if (!profile || profile.role !== 'admin') return;
+        setIsSavingSystem(true);
+        try {
+            const { error } = await supabase
+                .from('system_settings')
+                .upsert({
+                    key: 'audio_chat_enabled',
+                    value: String(!audioEnabled) // Toggle current state
+                });
+
+            if (error) throw error;
+            setAudioEnabled(!audioEnabled);
+            showToast('System settings updated!', 'success');
+        } catch (error: any) {
+            console.error("Error saving settings:", error);
+            showToast(error.message || 'Failed to update system settings.', 'error');
+        } finally {
+            setIsSavingSystem(false);
         }
     };
 
@@ -278,6 +315,42 @@ export const SettingsPage = () => {
                 </div>
             </div>
 
+            {/* 3. SYSTEM SETTINGS (ADMIN ONLY) */}
+            {profile.role === 'admin' && (
+                <div className="bg-casino-dark-800 rounded-3xl border border-white/5 overflow-hidden col-span-1 lg:col-span-2">
+                    <div className="bg-white/5 p-6 border-b border-white/5 flex items-center gap-3">
+                        <Settings className="text-purple-400" />
+                        <h2 className="text-lg font-bold text-white">System Settings</h2>
+                        <span className="px-3 py-1 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded-full text-[10px] font-black uppercase tracking-widest">
+                            Admin Only
+                        </span>
+                    </div>
+                    <div className="p-6">
+                        <div className="flex items-center justify-between p-4 bg-casino-dark-900 rounded-xl border border-white/5">
+                            <div className="flex items-center gap-4">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${audioEnabled ? 'bg-green-500/10 text-green-500' : 'bg-white/5 text-casino-slate-400'}`}>
+                                    <Volume2 size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-white">Audio Chat Reply</h3>
+                                    <p className="text-xs text-casino-slate-400">Enable AI to reply with voice audio in chat support.</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleSaveSystemSettings}
+                                disabled={isSavingSystem}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-casino-dark-900 ${audioEnabled ? 'bg-green-500' : 'bg-casino-slate-700'}`}
+                            >
+                                <span
+                                    className={`${audioEnabled ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+                                />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
+
+
     );
 };

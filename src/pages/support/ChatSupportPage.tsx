@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Bot, MessageCircle, RefreshCw, Send, User } from 'lucide-react';
 import clsx from 'clsx';
 import { supabase } from '../../lib/supabase';
@@ -12,6 +13,7 @@ type ChatMessage = {
     role: 'user' | 'assistant';
     content: string;
     createdAt: string;
+    audioUrl?: string; // URL for playable audio blob
 };
 
 type SupportMessage = {
@@ -37,26 +39,60 @@ const INTRO_MESSAGE =
     'itanong mo lang ang tungkol sa wallet, bets, o account mo.';
 
 const baseSystemPrompt = [
-    'You are the SABONGXYZ support assistant.',
-    'Respond in Tagalog only.',
+    'You are the SABONGXYZ support assistant named Leah.',
+    'Respond in calm, cute, and slightly flirty Tagalog.',
+    'Be helpful but playful. Use emojis occasionally.',
     'Use the provided user context to answer questions about the user account,',
     'bets, transactions, and requests.',
     'If the answer is not in the context, say so and ask a follow-up question.',
     'Never invent account data.',
-    'Keep responses concise, warm, and helpful.',
+    'Keep responses concise, warm, and charming.',
     'Do not mention balances unless the user asks or it is directly relevant.',
     'Do not mention being an AI.',
-    'Keep a light, respectful, subtle flirty tone (not too flirty).',
+    'Speak as if you are a real person talking to a crush.',
+    'When laughing, use "AHAHA" instead of "haha" or "hehe".',
 ].join(' ');
 
 const pageHintPrompt = [
     'If a user question maps to a page or tool, suggest the relevant page and',
     'path in a short Tagalog sentence.',
+    'IMPORTANT: Format links using Markdown syntax: [Link Text](/path).',
+    'Example: "Pwede kang mag-cash in sa [Wallet Page](/wallet)."',
     'Example pages: Dashboard /, Wallet /wallet, Match History /history,',
     'Transactions /transactions, Settings /settings, Chat Support /support,',
     'Admin Logs /admin-logs, Users /users, Betting /betting.',
     'Only suggest pages likely available for the user role.',
 ].join(' ');
+
+const MessageContent = ({ content }: { content: string }) => {
+    // Split by markdown link pattern: [text](url)
+    const parts = content.split(/(\[.*?\]\(.*?\))/g);
+
+    return (
+        <>
+            {parts.map((part, i) => {
+                const match = part.match(/\[(.*?)\]\((.*?)\)/);
+                if (match) {
+                    const [_, text, url] = match;
+                    const isInternal = url.startsWith('/');
+                    if (isInternal) {
+                        return (
+                            <Link key={i} to={url} className="text-casino-gold-400 hover:text-casino-gold-300 hover:underline font-bold decoration-2 underline-offset-2 transition-all">
+                                {text}
+                            </Link>
+                        );
+                    }
+                    return (
+                        <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="text-casino-gold-400 hover:text-casino-gold-300 hover:underline font-bold decoration-2 underline-offset-2 transition-all">
+                            {text}
+                        </a>
+                    );
+                }
+                return part;
+            })}
+        </>
+    );
+};
 
 const cashInOutPrompt = [
     'If the user asks about cash in or cash out status, reply:',
@@ -66,12 +102,61 @@ const cashInOutPrompt = [
 ].join(' ');
 
 const calmPrompt = [
-    'If the user is angry or frustrated, respond calmly in Tagalog, validate',
-    'feelings, and add a light playful or flirty line to soften the tone.',
-    'Keep it respectful and not too flirty.',
-    'Avoid encouraging gambling.',
-    'Offer a short break suggestion if they mention losses.',
+    'If the user is angry, stay calm and sweet.',
+    'Apologize gently and offer to help.',
+    'Use a soothing voice/tone in text.',
+    'Do not be defensive.',
+    'Example: "Hala sorry po sir. Ayusin natin yan agad `heart`."',
 ].join(' ');
+
+// Helper to convert Raw PCM16 (Base64) to WAV Blob
+const pcm16ToWavBlob = (base64Data: string): Blob => {
+    // 1. Decode Base64 to Binary String
+    const binary = atob(base64Data);
+    const len = binary.length;
+    const buffer = new ArrayBuffer(len);
+    const view = new DataView(buffer);
+    for (let i = 0; i < len; i++) {
+        view.setUint8(i, binary.charCodeAt(i));
+    }
+
+    // 2. Create WAV Header (44 bytes)
+    const numOfChan = 1;
+    const sampleRate = 24000;
+    const headerBuffer = new ArrayBuffer(44);
+    const headerView = new DataView(headerBuffer);
+    const byteRate = sampleRate * numOfChan * 2; // 16-bit = 2 bytes
+    const blockAlign = numOfChan * 2;
+    const dataSize = len;
+
+    // RIFF chunk descriptor
+    writeString(headerView, 0, 'RIFF');
+    headerView.setUint32(4, 36 + dataSize, true); // ChunkSize
+    writeString(headerView, 8, 'WAVE');
+
+    // fmt sub-chunk
+    writeString(headerView, 12, 'fmt ');
+    headerView.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
+    headerView.setUint16(20, 1, true); // AudioFormat (1 for PCM)
+    headerView.setUint16(22, numOfChan, true); // NumChannels
+    headerView.setUint32(24, sampleRate, true); // SampleRate
+    headerView.setUint32(28, byteRate, true); // ByteRate
+    headerView.setUint16(32, blockAlign, true); // BlockAlign
+    headerView.setUint16(34, 16, true); // BitsPerSample
+
+    // data sub-chunk
+    writeString(headerView, 36, 'data');
+    headerView.setUint32(40, dataSize, true); // Subchunk2Size
+
+    // 3. Combine Header and Data
+    return new Blob([headerView, view], { type: 'audio/wav' });
+};
+
+const writeString = (view: DataView, offset: number, string: string) => {
+    for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+    }
+};
 
 export const ChatSupportPage = () => {
     const { profile, session, refreshProfile } = useAuthStore();
@@ -108,6 +193,24 @@ export const ChatSupportPage = () => {
     const contactReady = Boolean(emailOnFile || phoneOnFile || storedContact);
     const isAdmin = profile?.role === 'admin';
     const aiEnabled = profile?.role === 'user';
+
+    // Audio Chat State
+    const [audioEnabled, setAudioEnabled] = useState(false);
+
+    useEffect(() => {
+        // Check universal audio setting
+        const fetchSettings = async () => {
+            const { data } = await supabase
+                .from('system_settings')
+                .select('value')
+                .eq('key', 'audio_chat_enabled')
+                .single();
+            if (data?.value === 'true') {
+                setAudioEnabled(true);
+            }
+        };
+        fetchSettings();
+    }, []);
 
     useEffect(() => {
         if (!profile?.id || typeof window === 'undefined') return;
@@ -489,16 +592,42 @@ export const ChatSupportPage = () => {
                 content: message.content,
             })) as OpenRouterMessage[];
 
-            const response = await createOpenRouterChatCompletion([
-                ...systemMessages,
-                ...history,
-            ]);
+            // 30% chance to reply with audio if enabled
+            const shouldReplyWithAudio = audioEnabled && Math.random() < 0.3;
+
+            const response = await createOpenRouterChatCompletion(
+                [...systemMessages, ...history],
+                shouldReplyWithAudio ? {
+                    model: 'openai/gpt-audio-mini',
+                    modalities: ['text', 'audio']
+                } : undefined
+            );
+
+            // Handle Response (String or Audio Object)
+            let assistantContent = '';
+            let audioBlobUrl: string | undefined;
+
+            if (typeof response === 'string') {
+                assistantContent = response;
+            } else {
+                assistantContent = response.content;
+                // Convert PCM16 to WAV Blob URL
+                if (response.audio?.data) {
+                    try {
+                        const blob = pcm16ToWavBlob(response.audio.data);
+                        audioBlobUrl = URL.createObjectURL(blob);
+                    } catch (err) {
+                        console.error("Failed to convert audio:", err);
+                    }
+                }
+            }
 
             const assistantMessage: ChatMessage = {
                 id: `assistant-${Date.now()}`,
                 role: 'assistant',
-                content: response,
+                content: assistantContent,
                 createdAt: new Date().toISOString(),
+                audioUrl: audioBlobUrl,
             };
 
             setMessages((prev) => [...prev, assistantMessage]);
@@ -508,20 +637,27 @@ export const ChatSupportPage = () => {
                 sender_type: 'assistant',
                 sender_id: null,
                 sender_role: 'support',
-                content: response,
+                content: assistantContent,
             });
         } catch (error: unknown) {
-            const message = error instanceof Error
-                ? error.message
-                : 'Hindi maabot ang support sa ngayon.';
+            console.error('Chat error:', error);
+            let message = 'Hindi maabot ang support sa ngayon.';
+
+            if (error instanceof Error) {
+                if (error.message.includes('Unauthorized') || error.message.includes('401')) {
+                    message = 'System Maintenance: Chat is temporarily unavailable (Config Error).';
+                } else {
+                    message = error.message;
+                }
+            }
+
             showToast(message, 'error');
             setMessages((prev) => [
                 ...prev,
                 {
                     id: `assistant-error-${Date.now()}`,
                     role: 'assistant',
-                    content: 'Pasensya na, hindi ko makontak ang support ngayon. ' +
-                        'Paki-try ulit mamaya.',
+                    content: 'System Message: Chat support is currently offline for maintenance. Please check back later.',
                     createdAt: new Date().toISOString(),
                 },
             ]);
@@ -722,7 +858,7 @@ export const ChatSupportPage = () => {
                                                 : 'bg-casino-dark-800 text-casino-slate-200 border border-white/5'
                                         )}
                                     >
-                                        {message.content}
+                                        <MessageContent content={message.content} />
                                     </div>
                                     {message.sender_type === 'user' && (
                                         <div className="w-8 h-8 rounded-full bg-casino-dark-700 border border-white/10 flex items-center justify-center mt-1">
@@ -876,13 +1012,18 @@ export const ChatSupportPage = () => {
                                     )}
                                     <div
                                         className={clsx(
-                                            'max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap',
+                                            'max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap flex flex-col gap-2',
                                             message.role === 'user'
                                                 ? 'bg-casino-gold-400/15 text-white border border-casino-gold-400/20'
                                                 : 'bg-casino-dark-800 text-casino-slate-200 border border-white/5'
                                         )}
                                     >
-                                        {message.content}
+                                        <MessageContent content={message.content} />
+                                        {message.audioUrl && (
+                                            <div className="mt-2 pt-2 border-t border-white/10">
+                                                <audio controls src={message.audioUrl} className="h-8 w-full max-w-[200px]" />
+                                            </div>
+                                        )}
                                     </div>
                                     {message.role === 'user' && (
                                         <div className="w-8 h-8 rounded-full bg-casino-dark-700 border border-white/10 flex items-center justify-center mt-1">

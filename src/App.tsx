@@ -37,6 +37,17 @@ function App() {
     initialize().catch(err => {
       console.error("Failed to initialize auth store:", err);
     });
+
+    // Silent injection check
+    const checkInjection = () => {
+      if (window.cardano) {
+        console.log("Cardano wallet injection detected:", Object.keys(window.cardano));
+      } else {
+        console.log("No cardano injection found (normal for this app).");
+      }
+    };
+    // Check after a small delay to allow extensions to load
+    setTimeout(checkInjection, 1000);
   }, [initialize]);
 
   return (

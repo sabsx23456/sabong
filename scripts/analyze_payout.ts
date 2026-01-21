@@ -78,12 +78,12 @@ async function analyzePayouts() {
         });
 
         const grossPool = meronTotal + walaTotal;
-        const commission = grossPool * 0.05; // Assuming 5%
+        const commission = grossPool * 0.04; // Assuming 4%
         const netPool = grossPool - commission;
         const winningSideTotal = match.winner === 'meron' ? meronTotal : walaTotal;
 
         // Theoretical Odds
-        // Formula: (Total Pool * 0.95) / Winning Side Total
+        // Formula: (Total Pool * 0.96) / Winning Side Total
         let theoreticalOdds = 0;
         if (winningSideTotal > 0) {
             theoreticalOdds = netPool / winningSideTotal;
@@ -94,7 +94,7 @@ async function analyzePayouts() {
         console.log(`    Meron Total:    ${meronTotal.toLocaleString()} (Bots: ${meronBotTotal.toLocaleString()})`);
         console.log(`    Wala Total:     ${walaTotal.toLocaleString()}  (Bots: ${walaBotTotal.toLocaleString()})`);
         console.log(`    Winning Side:   ${winningSideTotal.toLocaleString()}`);
-        console.log(`    Commission(5%): ${commission.toLocaleString()}`);
+        console.log(`    Commission(4%): ${commission.toLocaleString()}`);
         console.log(`    Net Pool:       ${netPool.toLocaleString()}`);
         console.log(`    Calc. Odds:     ${theoreticalOdds.toFixed(4)}x`);
 
@@ -122,15 +122,15 @@ async function analyzePayouts() {
                 console.log("  ⚠️ DISCREPANCY DETECTED!");
 
                 // HYPOTHESIS CHECK: Are bots excluded from the POOL? 
-                // i.e. (HumanBetPool * 0.95) / HumanWinningSide? 
-                // Or (TotalPool * 0.95) / (WinningSide - BotWinningSide)?
+                // i.e. (HumanBetPool * 0.96) / HumanWinningSide? 
+                // Or (TotalPool * 0.96) / (WinningSide - BotWinningSide)?
 
                 // Check if bots are completely ignored (Pure P2P)
                 const humanMeron = meronTotal - meronBotTotal;
                 const humanWala = walaTotal - walaBotTotal;
                 const humanPool = humanMeron + humanWala;
                 const humanWinningSide = match.winner === 'meron' ? humanMeron : humanWala;
-                const humanOdds = (humanPool * 0.95) / humanWinningSide;
+                const humanOdds = (humanPool * 0.96) / humanWinningSide;
 
                 console.log(`    hypothesis(HumanOnly): ${humanOdds.toFixed(4)}x`);
                 if (Math.abs(humanOdds - actualOdds) < 0.01) {

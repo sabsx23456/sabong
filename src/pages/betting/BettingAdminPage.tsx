@@ -174,6 +174,7 @@ export const BettingAdminPage = () => {
             });
 
             if (error) {
+                console.error("RPC Error (Immediate):", error);
                 showToast('Injection failed: ' + error.message, 'error');
                 return;
             }
@@ -203,12 +204,20 @@ export const BettingAdminPage = () => {
             }
 
             // Fire and forget individual bet chunks, but log errors if any
-            const { error } = await supabase.rpc('place_bot_bet', {
+            // Fire and forget individual bet chunks, but log errors if any
+            const { data, error } = await supabase.rpc('place_bot_bet', {
                 p_match_id: matchId,
                 p_selection: side,
                 p_amount: Math.floor(amountPerStep)
             });
-            if (error) console.error("Injection step failed:", error);
+
+            if (error) {
+                console.error("Injection step failed (Network/RPC):", error);
+            } else if (data && data.success === false) {
+                console.error("Injection step rejected (Logic):", data.error);
+                // Optional: Show toast on first error only to avoid spam
+                if (currentStep === 1) showToast('Injection Error: ' + data.error, 'error');
+            }
 
         }, 500); // 500ms
     };

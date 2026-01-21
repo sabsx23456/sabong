@@ -12,9 +12,21 @@ import { useUserPreferences } from '../../hooks/useUserPreferences';
 
 import clsx from 'clsx';
 
+const audioContextRef = { current: null as AudioContext | null };
+
+const getAudioContext = () => {
+    if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    if (audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume();
+    }
+    return audioContextRef.current;
+};
+
 const playTone = (frequency: number, durationMs: number) => {
     try {
-        const context = new AudioContext();
+        const context = getAudioContext();
         const oscillator = context.createOscillator();
         const gain = context.createGain();
         oscillator.type = 'sine';
@@ -24,9 +36,6 @@ const playTone = (frequency: number, durationMs: number) => {
         gain.connect(context.destination);
         oscillator.start();
         oscillator.stop(context.currentTime + durationMs / 1000);
-        oscillator.onended = () => {
-            context.close();
-        };
     } catch (error) {
         console.error("Unable to play sound:", error);
     }
@@ -70,19 +79,25 @@ export const UserDashboard = () => {
             lastNotifiedWinnerRef.current = null;
         }
 
-        // 1. Detect Winner Declaration (UI Only, No Payout Calc)
+        // 1. Detect Winner Declaration (Global Overlay)
         if (currentMatch.status === 'finished' && currentMatch.winner) {
             const notificationKey = `${currentMatch.id}-${currentMatch.winner}`;
 
-            // Only update refs, do NOT show toast here. Let the bet-watcher handle it.
             if (prevStatus !== null && lastNotifiedWinnerRef.current !== notificationKey) {
                 lastNotifiedWinnerRef.current = notificationKey;
-                // Aggressive Balance Refresh to ensure we get the bet update
-                let checks = 0;
-                const balanceInterval = setInterval(() => {
+
+                // Show Global Winner Overlay
+                setShowWinnerOverlay(true);
+                setTimeout(() => setShowWinnerOverlay(false), 5000);
+
+                // Play Sound for Winner
+                if (preferences.soundEffects) {
+                    playTone(520, 220); // Winner Fanfare
+                }
+
+                // Optimized Refresh
+                setTimeout(() => {
                     refreshProfile();
-                    checks++;
-                    if (checks >= 5) clearInterval(balanceInterval);
                 }, 1000);
             }
         }
@@ -226,8 +241,8 @@ export const UserDashboard = () => {
 
             const totals = { meron: 0, wala: 0, draw: 0 };
             data?.forEach((bet) => {
-                // STRICTLY EXCLUDE BOTS from visual totals to match Payout V2 Logic
-                if (bet.is_bot) return;
+                // INCLUDE BOTS in visual totals (Pump Fake) but they are excluded in Payout Logic
+                // if (bet.is_bot) return;
 
                 const amount = Number(bet.amount) || 0;
                 if (bet.selection === 'meron') totals.meron += amount;
@@ -282,6 +297,7 @@ export const UserDashboard = () => {
             .from('bets')
             .select('*')
             .eq('user_id', profile.id)
+            .neq('is_bot', true) // Hide injects/bots from my personal history
             .order('created_at', { ascending: false })
             .limit(10);
 
@@ -346,8 +362,8 @@ export const UserDashboard = () => {
     };
 
     const getOddsDisplay = (sideTotal: number, totalPool: number) => {
-        const fallbackOdds = 1.9;
-        const decimalOdds = sideTotal > 0 && totalPool > 0 ? (totalPool * 0.95) / sideTotal : fallbackOdds;
+        const fallbackOdds = 1.92;
+        const decimalOdds = sideTotal > 0 && totalPool > 0 ? (totalPool * 0.96) / sideTotal : fallbackOdds;
         const safeDecimal = isFinite(decimalOdds) && decimalOdds > 0 ? decimalOdds : fallbackOdds;
 
         if (preferences.oddsFormat === 'hong-kong') {
@@ -566,7 +582,7 @@ export const UserDashboard = () => {
                                     const bet = myBetOnCurrent('meron');
                                     const total = meronSideTotal + walaSideTotal;
                                     const side = meronSideTotal;
-                                    const odds = (side > 0 && total > 0) ? (total * 0.95 / side) : 0;
+                                    const odds = (side > 0 && total > 0) ? (total * 0.96 / side) : 0;
                                     return (bet * (odds || 0));
                                 })()
                             } />
@@ -590,7 +606,7 @@ export const UserDashboard = () => {
                                     const bet = myBetOnCurrent('wala');
                                     const total = meronSideTotal + walaSideTotal;
                                     const side = walaSideTotal;
-                                    const odds = (side > 0 && total > 0) ? (total * 0.95 / side) : 0;
+                                    const odds = (side > 0 && total > 0) ? (total * 0.96 / side) : 0;
                                     return (bet * (odds || 0));
                                 })()
                             } />

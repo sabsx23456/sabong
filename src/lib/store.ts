@@ -84,7 +84,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                                 table: 'profiles',
                                 filter: `id=eq.${session.user.id}`
                             }, (payload) => {
-                                console.log("Profile updated via realtime:", payload);
+                                // console.log("Profile updated via realtime:", payload);
                                 set({ profile: payload.new as Profile });
                             })
                             .subscribe();
