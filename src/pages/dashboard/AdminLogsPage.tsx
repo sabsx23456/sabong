@@ -1,7 +1,8 @@
+```
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import type { AdminLog } from '../../types';
-import { Search, Shield, Filter, Calendar, ChevronLeft, ChevronRight, Eye, User } from 'lucide-react';
+import { Search, Filter, Download, ArrowUpRight, ArrowDownLeft, Shield, AlertTriangle, User, RefreshCw } from 'lucide-react';
 import clsx from 'clsx';
 
 interface AdminLogsPageProps {
@@ -29,27 +30,27 @@ export const AdminLogsPage = ({ compact = false }: AdminLogsPageProps) => {
             let query = supabase
                 .from('admin_logs')
                 .select(`
-                    id,
-                    admin_id,
-                    action_type,
-                    target_id,
-                    target_name,
-                    details,
-                    created_at,
-                    ip_address,
-                    admin:admin_id ( username )
-                `, { count: 'exact' });
+id,
+    admin_id,
+    action_type,
+    target_id,
+    target_name,
+    details,
+    created_at,
+    ip_address,
+    admin: admin_id(username)
+        `, { count: 'exact' });
 
             if (filter) {
                 query = query.textSearch('target_name', filter, { type: 'websearch', config: 'english' }); // Or ilike for simplicity 
                 // textSearch might need FTS setup, falling back to ilike for simple column search if not indexed
-                // query = query.ilike('target_name', `%${filter}%`); 
+                // query = query.ilike('target_name', `% ${ filter }% `); 
                 // Actually target_name search is safer with ilike
 
             }
 
             if (filter) {
-                query = query.or(`target_name.ilike.%${filter}%,action_type.ilike.%${filter}%`);
+                query = query.or(`target_name.ilike.% ${ filter }%, action_type.ilike.% ${ filter }% `);
             }
 
             if (actionFilter !== 'all') {
