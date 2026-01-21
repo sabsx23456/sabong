@@ -1,8 +1,7 @@
-```
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import type { AdminLog } from '../../types';
-import { Search, Filter, Download, ArrowUpRight, ArrowDownLeft, Shield, AlertTriangle, User, RefreshCw } from 'lucide-react';
+import { Search, Filter, Shield, User, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 
 interface AdminLogsPageProps {
@@ -50,7 +49,7 @@ id,
             }
 
             if (filter) {
-                query = query.or(`target_name.ilike.% ${ filter }%, action_type.ilike.% ${ filter }% `);
+                query = query.or(`target_name.ilike.% ${filter}%, action_type.ilike.% ${filter}% `);
             }
 
             if (actionFilter !== 'all') {
